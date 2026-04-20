@@ -1,6 +1,5 @@
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
-from scipy.ndimage import rotate
 
 class IrisProcessor:
     """Klasa logiczna zawierająca algorytmy z instrukcji."""
@@ -84,7 +83,7 @@ class IrisProcessor:
 
     @staticmethod
     def find_center_and_radius_via_projections(binary_img):
-        THRESHOLD_RATIO = 0.5
+        THRESHOLD_RATIO = 0.9
         
         inverted = np.where(binary_img == 0, 1, 0)
         
@@ -96,7 +95,7 @@ class IrisProcessor:
             if max_val == 0:
                 return 0, 0
             
-            threshold = max_val * THRESHOLD_RATIO * 0.25
+            threshold = max_val * THRESHOLD_RATIO * 0.2
             valid_indices = np.where(proj > threshold)[0]
             if len(valid_indices) == 0:
                 return 0, 0
@@ -160,7 +159,7 @@ class IrisProcessor:
         """
         h, w = gray_img.shape
         
-        # Wycinamy poziomy pasek o wysokości 20 pikseli wokół środka źrenicy (cy)
+        # Wycinamy poziomy pasek o wysokości 20 pikseli wokół środka źrenicy
         strip_height = 10 
         y_start = max(0, cy - strip_height)
         y_end = min(h, cy + strip_height)
@@ -170,32 +169,29 @@ class IrisProcessor:
         profile = np.mean(horizontal_strip, axis=0)
         
         # Obliczamy gradient (pochodną) - czyli różnicę jasności między sąsiednimi pikselami.
-        # W miejscu przejścia ciemnej tęczówki w jasną twardówkę będzie ogromny skok.
+        # W miejscu przejścia ciemnej tęczówki w jasną twardówkę będzie skok.
         gradient = np.abs(np.diff(profile))
         
-        # Musimy wyzerować środek, żeby algorytm nie znalazł krawędzi źrenicy zamiast tęczówki.
-        # Bezpieczny margines: zakładamy, że promień tęczówki to co najmniej 1.2x promień źrenicy.
         ignore_margin = int(pupil_radius * 1.2)
         safe_left = max(0, cx - ignore_margin)
         safe_right = min(w - 1, cx + ignore_margin)
         gradient[safe_left:safe_right] = 0
         
-        # Szukamy największego skoku (maksimum gradientu) po lewej stronie od źrenicy
+        # największy skok po lewej stronie
         left_half = gradient[:cx]
         left_edge_x = np.argmax(left_half) if len(left_half) > 0 else 0
         
-        # Szukamy największego skoku po prawej stronie od źrenicy
+        # największy skok po prawej stronie
         right_half = gradient[cx:]
         right_edge_x = cx + np.argmax(right_half) if len(right_half) > 0 else 0
         
-        # Obliczamy promienie na podstawie odległości krawędzi od środka
         r_left = cx - left_edge_x
         r_right = right_edge_x - cx
         
-        # Uśredniamy wynik (tęczówka z boku wygląda jak okrąg, więc lewy i prawy promień powinny być równe)
+        # uśredniamy wynik
         iris_radius = int((r_left + r_right) / 2)
         
-        # Zabezpieczenie przed błędem logicznym: tęczówka nie może być poza zdjęciem
+        # zabezpieczenie przed błędem: tęczówka nie może być poza zdjęciem
         if iris_radius < pupil_radius:
             iris_radius = pupil_radius + 20 # Wartość domyślna awaryjna
             
