@@ -38,24 +38,51 @@ class IrisWorker(QThread):
                     img = IrisProcessor.apply_morphology(img, op2, sz2)
 
                     if self.step >= 4:
-                        cx, cy = IrisProcessor.find_center_via_projections(img)
-                        img = IrisProcessor.draw_crosshair(img, cx, cy, size=30, color=(255, 0, 0))
+                        # cx, cy = IrisProcessor.find_center_via_projections(img)
+                        # img = IrisProcessor.draw_crosshair(img, cx, cy, size=30, color=(255, 0, 0))
+
+                        cx, cy, pupil_radius = IrisProcessor.find_center_and_radius_via_projections(img)
+                        img_cross = IrisProcessor.draw_crosshair_and_circle(img, cx, cy, pupil_radius, cross_size=30, color=(255, 0, 0))
+                        
+                        if self.step == 4:
+                            img = img_cross
 
                         if self.step >= 5:
                             img_gray = IrisProcessor.to_grayscale(self.image.copy())
                             x_param_iris = self.params.get('x_param_iris', 1.0)
                             if x_param_iris <= 0: x_param_iris = 0.1 
                             threshold_P = P / x_param_iris
-                            img = np.where(img_gray < threshold_P, 0, 255).astype(np.uint8)
+                            
+                            img_iris_bin = np.where(img_gray < threshold_P, 0, 255).astype(np.uint8)
+                            if self.step == 5:
+                                img = img_iris_bin
 
                             if self.step >= 6:
                                 op3 = self.params.get('op3', 'Brak')
                                 sz3 = self.params.get('sz3', 3)
-                                img = IrisProcessor.apply_morphology(img, op3, sz3)
+                                img_iris_bin = IrisProcessor.apply_morphology(img_iris_bin, op3, sz3)
                                 
                                 op4 = self.params.get('op4', 'Brak')
                                 sz4 = self.params.get('sz4', 3)
-                                img = IrisProcessor.apply_morphology(img, op4, sz4)
+                                img_iris_bin = IrisProcessor.apply_morphology(img_iris_bin, op4, sz4)
 
+                                if self.step == 6:
+                                    img = img_iris_bin
+                                
+                                
+                                if self.step >= 7:
+                                    iris_radius = IrisProcessor.find_iris_radius(img_iris_bin, cx, cy, pupil_radius)
+                                    
+                                    if self.step == 7:
+                                        color_display = self.image.copy()
+                                        color_display = IrisProcessor.draw_crosshair_and_circle(color_display, cx, cy, pupil_radius, color=(255, 0, 0))
+                                        color_display = IrisProcessor.draw_crosshair_and_circle(color_display, cx, cy, iris_radius, color=(0, 255, 0))
+                                        img = color_display
+
+                                    if self.step >= 8:
+                                        unwrapped = IrisProcessor.unwrap_iris(
+                                            self.image, cx, cy, pupil_radius, iris_radius, width=360, height=60
+                                        )
+                                        img = unwrapped
         if not self.is_cancelled:
             self.finished.emit(img)

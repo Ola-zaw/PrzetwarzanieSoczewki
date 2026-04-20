@@ -247,12 +247,16 @@ class IrisMainWindow(QMainWindow):
         
         tytuly_krokow = [
             "Krok 0: Oryginał", "Krok 1: Skala szarości", "Krok 2: Detekcja źrenicy",
-            "Krok 3: Morfologia źrenicy", "Krok 4: Środek źrenicy", "Krok 5: Detekcja tęczówki",
-            "Krok 6: Morfologia tęczówki"
+            "Krok 3: Morfologia źrenicy", 
+            "Krok 4: Środek i promień źrenicy", 
+            "Krok 5: Detekcja tęczówki",
+            "Krok 6: Morfologia tęczówki",
+            "Krok 7: Wyznaczenie promienia tęczówki", 
+            "Krok 8: Rozwinięcie tęczówki"
         ]
         self.lbl_step.setText(tytuly_krokow[self.current_step] if self.current_step < len(tytuly_krokow) else f"Krok {self.current_step}")
         
-        self.set_controls_visible(visible_pupil=(self.current_step in [2, 3, 4]), visible_iris=(self.current_step >= 5))
+        self.set_controls_visible(visible_pupil=(self.current_step in [2, 3, 4]), visible_iris=(self.current_step in [5, 6, 7]))
         self.morph_widget.setVisible(self.current_step == 3)
         self.morph_widget_iris.setVisible(self.current_step == 6)
         
