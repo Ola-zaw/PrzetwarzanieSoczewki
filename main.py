@@ -1,14 +1,46 @@
-import sys
+import sys, os
 import numpy as np
 from PIL import Image
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QGridLayout,
-                             QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QComboBox)
-from PyQt5.QtCore import Qt
+                             QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QComboBox,
+                             QMessageBox)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QImage, QPixmap
 
 from przegladarka_obrazow import PrzegladarkaObrazow
 from projekcje import ProjekcjaGorna, ProjekcjaBoczna
 from iris_processor import IrisProcessor
 from iris_worker import IrisWorker
+
+
+class SaveWorker(QThread):
+    success = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, file_path, save_path, process_func):
+        super().__init__()
+        self.file_path = file_path
+        self.save_path = save_path
+        self.process_func = process_func 
+
+    def run(self):
+        """Ta metoda uruchamia się w tle, gdy wywołamy .start()"""
+        try:
+            pil_img = Image.open(self.file_path)
+            pil_img = pil_img.convert('RGB')
+            img = np.array(pil_img)
+            
+            img = self.process_func(img) 
+            
+            Image.fromarray(img).save(self.save_path)
+            
+            self.success.emit()
+            
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+
 
 class IrisMainWindow(QMainWindow):
     def __init__(self):
@@ -17,6 +49,7 @@ class IrisMainWindow(QMainWindow):
         self.current_step = 0
         self.original_image = None
         self.current_processed_image = None
+        self.current_file_path = ""
         self.setup_ui()
 
     def setup_ui(self):
@@ -28,11 +61,19 @@ class IrisMainWindow(QMainWindow):
         self.btn_load = QPushButton("Wczytaj obraz")
         self.btn_load.clicked.connect(self.load_image)
         top_layout.addWidget(self.btn_load)
+
+        self.btn_save = QPushButton("Zapisz kod (BMP)")
+        self.btn_save.clicked.connect(self.save_iris_code)
+        self.btn_save.setVisible(False) # Domyślnie ukryty
+        top_layout.addWidget(self.btn_save)
+
+
         top_layout.addStretch()
         layout.addLayout(top_layout)
         
         # --- Przeglądarka i Projekcje ---
-        self.grid = QGridLayout()
+        self.grid_widget = QWidget()
+        self.grid = QGridLayout(self.grid_widget)
         self.grid.setSpacing(0)
 
         self.proj_gora = ProjekcjaGorna()
@@ -50,7 +91,8 @@ class IrisMainWindow(QMainWindow):
         
         self.proj_gora.setVisible(False)
         self.proj_boczna.setVisible(False)
-        layout.addLayout(self.grid)
+        
+        layout.addWidget(self.grid_widget)
 
         # --- Suwak Źrenicy ---
         self.control_layout = QHBoxLayout()
@@ -82,7 +124,22 @@ class IrisMainWindow(QMainWindow):
         layout.addLayout(self.control_layout_iris)
         self.slider_x_iris.valueChanged.connect(self.on_slider_iris_changed)
         
-        self.set_controls_visible(visible_pupil=False, visible_iris=False)
+        # --- Suwak Częstotliwości (Gabor) --- DODANY FRAGMENT
+        self.control_layout_gabor = QHBoxLayout()
+        self.lbl_param_f = QLabel("Częstotliwość f (Falka Gabora):")
+        self.slider_f = QSlider(Qt.Horizontal)
+        self.slider_f.setRange(1, 314) # Odpowiada od 0.01 do 3.14 (około Pi)
+        self.slider_f.setValue(10)     # Domyślnie 0.10
+        self.slider_f.setTickPosition(QSlider.TicksBelow)
+        self.lbl_slider_val_f = QLabel("0.10")
+        
+        self.control_layout_gabor.addWidget(self.lbl_param_f)
+        self.control_layout_gabor.addWidget(self.slider_f)
+        self.control_layout_gabor.addWidget(self.lbl_slider_val_f)
+        layout.addLayout(self.control_layout_gabor)
+        self.slider_f.valueChanged.connect(self.on_slider_f_changed)
+
+        self.set_controls_visible(visible_pupil=False, visible_iris=False, visible_gabor=False)
 
         # --- Morfologia ---
         self.morph_widget = QWidget()
@@ -145,6 +202,35 @@ class IrisMainWindow(QMainWindow):
         self.combo_morph_4.currentIndexChanged.connect(self.on_morph_iris_changed)
         self.slider_morph_4.valueChanged.connect(self.on_morph_iris_changed)
         
+
+        # --- PANEL PORÓWNAWCZY (KROK 10) ---
+        self.comp_panel = QWidget()
+        comp_layout = QHBoxLayout(self.comp_panel)
+        
+        # Lewa strona: Obrazy jeden pod drugim
+        left_img_layout = QVBoxLayout()
+        self.lbl_code1 = QLabel("Kod 1 (brak)"); self.lbl_code1.setAlignment(Qt.AlignCenter)
+        self.lbl_code2 = QLabel("Kod 2 (brak)"); self.lbl_code2.setAlignment(Qt.AlignCenter)
+        self.btn_load_c1 = QPushButton("Wczytaj Kod 1"); self.btn_load_c1.clicked.connect(lambda: self.load_code_to_compare(1))
+        self.btn_load_c2 = QPushButton("Wczytaj Kod 2"); self.btn_load_c2.clicked.connect(lambda: self.load_code_to_compare(2))
+        
+        left_img_layout.addWidget(self.btn_load_c1); left_img_layout.addWidget(self.lbl_code1)
+        left_img_layout.addWidget(self.btn_load_c2); left_img_layout.addWidget(self.lbl_code2)
+        comp_layout.addLayout(left_img_layout)
+        
+        # Prawa strona: Informacje
+        self.info_panel = QLabel("Wczytaj dwa kody,\naby porównać...")
+        self.info_panel.setStyleSheet("font-size: 16px; font-weight: bold; border: 1px solid gray; padding: 10px;")
+        comp_layout.addWidget(self.info_panel)
+        
+        layout.addWidget(self.comp_panel)
+        self.comp_panel.setVisible(False)
+        
+        # Zmienne przechowujące wczytane kody
+        self.loaded_code1 = None
+        self.loaded_code2 = None
+
+
         # --- Nawigacja ---
         nav_layout = QHBoxLayout()
         self.btn_prev = QPushButton("← Wstecz")
@@ -167,6 +253,7 @@ class IrisMainWindow(QMainWindow):
     def load_image(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Wybierz obraz oka", "", "Images (*.png *.jpg *.bmp)")
         if file_path:
+            self.current_file_path = file_path
             pil_img = Image.open(file_path).convert('RGB')
             self.original_image = np.array(pil_img)
             self.current_step = 0
@@ -182,13 +269,18 @@ class IrisMainWindow(QMainWindow):
             self.current_step -= 1
             self.process()
 
-    def set_controls_visible(self, visible_pupil, visible_iris=False):
+    def set_controls_visible(self, visible_pupil, visible_iris=False, visible_gabor=False):
         self.lbl_param.setVisible(visible_pupil)
         self.slider_x.setVisible(visible_pupil)
         self.lbl_slider_val.setVisible(visible_pupil)
+
         self.lbl_param_iris.setVisible(visible_iris)
         self.slider_x_iris.setVisible(visible_iris)
         self.lbl_slider_val_iris.setVisible(visible_iris)
+
+        self.lbl_param_f.setVisible(visible_gabor)
+        self.slider_f.setVisible(visible_gabor)
+        self.lbl_slider_val_f.setVisible(visible_gabor)
 
     def set_morph_visible(self, visible):
         self.morph_widget.setVisible(visible)
@@ -200,6 +292,10 @@ class IrisMainWindow(QMainWindow):
     def on_slider_iris_changed(self, value):
         self.lbl_slider_val_iris.setText(f"{value / 10.0:.1f}")
         if self.current_step >= 5: self.process()
+
+    def on_slider_f_changed(self, value):
+        self.lbl_slider_val_f.setText(f"{value / 100.0:.2f}")
+        if self.current_step >= 9: self.process()
 
     def on_morph_changed(self):
         self.lbl_morph_1.setText(f"Rozmiar: {self.slider_morph_1.value() * 2 + 1}")
@@ -234,7 +330,9 @@ class IrisMainWindow(QMainWindow):
             'op3': self.combo_morph_3.currentText(),
             'sz3': self.slider_morph_3.value() * 2 + 1,
             'op4': self.combo_morph_4.currentText(),
-            'sz4': self.slider_morph_4.value() * 2 + 1
+            'sz4': self.slider_morph_4.value() * 2 + 1,
+
+            'f_frequency': self.slider_f.value() / 100.0
         }
 
         self.worker = IrisWorker(self.original_image, self.current_step, params)
@@ -253,24 +351,36 @@ class IrisMainWindow(QMainWindow):
             "Krok 6: Morfologia tęczówki",
             "Krok 7: Wyznaczenie promienia tęczówki", 
             "Krok 8: Rozwinięcie tęczówki"
+            "Krok 9: Kodowanie Daugmana (Gabor)"
         ]
         self.lbl_step.setText(tytuly_krokow[self.current_step] if self.current_step < len(tytuly_krokow) else f"Krok {self.current_step}")
         
-        self.set_controls_visible(visible_pupil=(self.current_step in [2, 3, 4]), visible_iris=(self.current_step in [5, 6, 7]))
+        self.set_controls_visible(
+            visible_pupil=(self.current_step in [2, 3, 4]), 
+            visible_iris=(self.current_step in [5, 6, 7]),
+            visible_gabor=(self.current_step == 9))
+
         self.morph_widget.setVisible(self.current_step == 3)
         self.morph_widget_iris.setVisible(self.current_step == 6)
         
         if self.current_step == 4:
             self.proj_gora.setVisible(True); self.proj_boczna.setVisible(True)
             gray_img = IrisProcessor.to_grayscale(processed_img)
-            inverted = np.where(gray_img < 128, 255, 0).astype(np.uint8)
+            inverted = np.where(gray_img < 128, 255, 0).astype(np.uint8)    
             self.proj_gora.update_plot(inverted, rgb_mode=False)
             self.proj_boczna.update_plot(inverted, rgb_mode=False)
         else:
             self.proj_gora.setVisible(False); self.proj_boczna.setVisible(False)
+        
+        self.btn_save.setVisible(self.current_step == 9)
+
+        is_step_10 = (self.current_step == 10)
+        self.comp_panel.setVisible(is_step_10)
+        self.grid_widget.setVisible(not is_step_10)
+
 
         self.btn_prev.setEnabled(self.current_step > 0)
-        self.btn_next.setEnabled(True)
+        self.btn_next.setEnabled(self.current_step < 10)
 
     def update_projections_from_rect(self, x, y, w, h):
         if not self.current_processed_image is None and self.current_step == 4:
@@ -279,6 +389,135 @@ class IrisMainWindow(QMainWindow):
             inverted = np.where(gray < 128, 255, 0).astype(np.uint8)
             self.proj_gora.update_plot(inverted, rgb_mode=False)
             self.proj_boczna.update_plot(inverted, rgb_mode=False)
+
+    
+    def create_process_func(self):
+        """
+        Tworzy funkcję przeprowadzającą obraz przez wszystkie kroki algorytmu,
+        używając parametrów z suwaków aktualnych w momencie kliknięcia 'Zapisz'.
+        """
+        params = {
+            'x_I': max(0.01, self.slider_x.value() / 10.0),
+            'x_P': max(0.01, self.slider_x_iris.value() / 10.0),
+            'op1': self.combo_morph_1.currentText(), 'sz1': self.slider_morph_1.value() * 2 + 1,
+            'op2': self.combo_morph_2.currentText(), 'sz2': self.slider_morph_2.value() * 2 + 1,
+            'op3': self.combo_morph_3.currentText(), 'sz3': self.slider_morph_3.value() * 2 + 1,
+            'op4': self.combo_morph_4.currentText(), 'sz4': self.slider_morph_4.value() * 2 + 1,
+            'f': self.slider_f.value() / 100.0
+        }
+
+        def _process(img):
+            img_gray = IrisProcessor.to_grayscale(img)
+            P = IrisProcessor.calculate_base_threshold(img_gray)
+            
+            thr_I = P / params['x_I']
+            pupil_bin = np.where(img_gray < thr_I, 0, 255).astype(np.uint8)
+            pupil_bin = IrisProcessor.apply_morphology(pupil_bin, params['op1'], params['sz1'])
+            pupil_bin = IrisProcessor.apply_morphology(pupil_bin, params['op2'], params['sz2'])
+            
+            cx, cy, r_pupil = IrisProcessor.find_center_and_radius_via_n_projections(pupil_bin)
+            
+            thr_P = P / params['x_P']
+            iris_bin = np.where(img_gray < thr_P, 0, 255).astype(np.uint8)
+            iris_bin = IrisProcessor.apply_morphology(iris_bin, params['op3'], params['sz3'])
+            iris_bin = IrisProcessor.apply_morphology(iris_bin, params['op4'], params['sz4'])
+            r_iris = IrisProcessor.find_iris_radius(img_gray, cx, cy, r_pupil)
+            
+            unwrapped = IrisProcessor.unwrap_iris(img, cx, cy, r_pupil, r_iris, width=128, height=64)
+            
+            code = IrisProcessor.generate_iris_code(unwrapped, f=params['f'])
+            return IrisProcessor.visualize_iris_code(code)
+
+        return _process
+
+    def save_iris_code(self):
+        if not self.current_file_path:
+            return
+
+        # 1. Przygotowanie ścieżek
+        base_name = os.path.basename(self.current_file_path)
+        name_without_ext = os.path.splitext(base_name)[0]
+
+        # Pobierz 3 katalogi powyżej pliku
+        file_dir = os.path.dirname(self.current_file_path)
+        path_parts = []
+        current_path = file_dir
+        for _ in range(3):
+            parent_dir = os.path.basename(current_path)
+            if parent_dir:
+                path_parts.insert(0, parent_dir)
+            current_path = os.path.dirname(current_path)
+        
+        # Stwórz nową nazwę pliku: dir0_dir1_dir2_name_coded.bmp
+        if len(path_parts) >= 3 and path_parts[0] == 'MMU-Iris-Database':
+            new_filename = f"{path_parts[0]}_{path_parts[1]}_{path_parts[2]}_{name_without_ext}_coded.bmp"
+        else:
+            # Fallback, jeśli nie ma 3 katalogów
+            new_filename = f"{name_without_ext}_coded.bmp"
+        
+        save_dir = "coded_iris"
+        os.makedirs(save_dir, exist_ok=True) # Tworzy folder, jeśli nie istnieje
+        
+        save_path = os.path.join(save_dir, new_filename)
+
+        # 2. Zabezpieczenie przed klikaniem
+        self.btn_save.setEnabled(False)
+        self.btn_save.setText("Zapisywanie...")
+
+        # 3. Uruchomienie Workera
+        process_function = self.create_process_func()
+        self.save_worker = SaveWorker(self.current_file_path, save_path, process_function)
+        
+        self.save_worker.success.connect(lambda: self.on_save_success(save_path))
+        self.save_worker.error.connect(self.on_save_error)
+        self.save_worker.start()
+
+
+
+    def load_code_to_compare(self, slot):
+        path, _ = QFileDialog.getOpenFileName(self, "Wybierz kod tęczówki", "coded_iris", "Images (*.bmp)")
+        if path:
+            img = np.array(Image.open(path).convert('L'))
+            qimg = QImage(img.data, img.shape[1], img.shape[0], img.shape[1], QImage.Format_Grayscale8)
+            pix = QPixmap.fromImage(qimg).scaled(400, 100, Qt.KeepAspectRatio)
+            
+            if slot == 1:
+                self.loaded_code1 = img
+                self.lbl_code1.setPixmap(pix)
+            else:
+                self.loaded_code2 = img
+                self.lbl_code2.setPixmap(pix)
+                
+            self.run_comparison_logic()
+
+    def run_comparison_logic(self):
+        if self.loaded_code1 is not None and self.loaded_code2 is not None:
+            dist = IrisProcessor.calculate_hamming_distance(self.loaded_code1, self.loaded_code2)
+            
+            # Próg decyzyjny 0.3 zgodnie z literaturą
+            threshold = 0.3
+            is_same = dist < threshold
+            
+            result_text = f"ODLEGŁOŚĆ HAMMINGA: {dist:.4f}\n\n"
+            result_text += f"PRÓG DECYZYJNY: {threshold}\n\n"
+            result_text += "WYNIK: " + ("ZGODNY (To ta sama osoba)" if is_same else "NIEZGODNY (Różne osoby)")
+            
+            color = "green" if is_same else "red"
+            self.info_panel.setText(result_text)
+            self.info_panel.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {color}; border: 2px solid {color}; padding: 10px;")
+
+
+    def on_save_success(self, save_path):
+        self.btn_save.setEnabled(True)
+        self.btn_save.setText("Zapisz kod (BMP)")
+        QMessageBox.information(self, "Sukces", f"Zapisano kod tęczówki pomyślnie:\n{save_path}")
+
+    def on_save_error(self, err_msg):
+        self.btn_save.setEnabled(True)
+        self.btn_save.setText("Zapisz kod (BMP)")
+        QMessageBox.critical(self, "Błąd", f"Wystąpił błąd podczas zapisywania:\n{err_msg}")
+
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

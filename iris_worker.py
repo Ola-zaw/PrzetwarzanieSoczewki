@@ -41,7 +41,7 @@ class IrisWorker(QThread):
                         # cx, cy = IrisProcessor.find_center_via_projections(img)
                         # img = IrisProcessor.draw_crosshair(img, cx, cy, size=30, color=(255, 0, 0))
 
-                        cx, cy, pupil_radius = IrisProcessor.find_center_and_radius_via_projections(img)
+                        cx, cy, pupil_radius = IrisProcessor.find_center_and_radius_via_n_projections(img)
                         img_cross = IrisProcessor.draw_crosshair_and_circle(img, cx, cy, pupil_radius, cross_size=30, color=(255, 0, 0))
                         
                         if self.step == 4:
@@ -79,10 +79,18 @@ class IrisWorker(QThread):
                                         color_display = IrisProcessor.draw_crosshair_and_circle(color_display, cx, cy, iris_radius, color=(0, 255, 0))
                                         img = color_display
 
+                                    
                                     if self.step >= 8:
                                         unwrapped = IrisProcessor.unwrap_iris(
                                             self.image, cx, cy, pupil_radius, iris_radius, width=360, height=60
                                         )
-                                        img = unwrapped
+                                        if self.step == 8:
+                                            img = unwrapped
+                                        
+                                        if self.step >= 9:
+                                            f_val = self.params.get('f_frequency', 0.1)
+                                            
+                                            code = IrisProcessor.generate_iris_code(unwrapped, f=f_val)
+                                            img = IrisProcessor.visualize_iris_code(code)
         if not self.is_cancelled:
             self.finished.emit(img)
