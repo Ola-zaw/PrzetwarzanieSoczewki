@@ -88,7 +88,7 @@ class IrisWorker(QThread):
                                             img = unwrapped
                                         
                                         if self.step >= 9:
-                                            f_val = self.params.get('f_frequency', 0.1)
+                                            f_val = self.params.get('f_frequency', 0.5)
                                             
                                             code = IrisProcessor.generate_iris_code(unwrapped, f=f_val)
                                             img = IrisProcessor.visualize_iris_code(code)

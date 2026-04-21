@@ -91,8 +91,8 @@ class IrisProcessor:
         Wyznacza środek i promień źrenicy wykonując n projekcji pod różnymi kątami.
         Wersja używająca czystego NumPy i rzutowania współrzędnych (bez obracania obrazu).
         """
-        threshold_1 = 0.25 # Procent piku histogramu, poniżej którego uznajemy, że to szum
-        threshold_2 = 0.33 # Procent piku projekcji, poniżej którego uznajemy, że to szum
+        threshold_1 = 0.33 # Procent piku histogramu, poniżej którego uznajemy, że to szum
+        threshold_2 = 0.1 # Procent piku projekcji, poniżej którego uznajemy, że to szum
         
         inverted = np.where(binary_img == 0, 1, 0).astype(np.uint8)
         h, w = inverted.shape
