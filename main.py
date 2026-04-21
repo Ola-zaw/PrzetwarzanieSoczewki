@@ -12,7 +12,6 @@ from projekcje import ProjekcjaGorna, ProjekcjaBoczna
 from iris_processor import IrisProcessor
 from iris_worker import IrisWorker
 
-
 class SaveWorker(QThread):
     success = pyqtSignal()
     error = pyqtSignal(str)
@@ -38,9 +37,6 @@ class SaveWorker(QThread):
             
         except Exception as e:
             self.error.emit(str(e))
-
-
-
 
 class IrisMainWindow(QMainWindow):
     def __init__(self):
@@ -124,7 +120,7 @@ class IrisMainWindow(QMainWindow):
         layout.addLayout(self.control_layout_iris)
         self.slider_x_iris.valueChanged.connect(self.on_slider_iris_changed)
         
-        # --- Suwak Częstotliwości (Gabor) --- DODANY FRAGMENT
+        # --- Suwak Częstotliwości (Gabor) ---
         self.control_layout_gabor = QHBoxLayout()
         self.lbl_param_f = QLabel("Częstotliwość f (Falka Gabora):")
         self.slider_f = QSlider(Qt.Horizontal)
@@ -201,7 +197,6 @@ class IrisMainWindow(QMainWindow):
         self.slider_morph_3.valueChanged.connect(self.on_morph_iris_changed)
         self.combo_morph_4.currentIndexChanged.connect(self.on_morph_iris_changed)
         self.slider_morph_4.valueChanged.connect(self.on_morph_iris_changed)
-        
 
         # --- PANEL PORÓWNAWCZY (KROK 10) ---
         self.comp_panel = QWidget()
@@ -229,7 +224,6 @@ class IrisMainWindow(QMainWindow):
         # Zmienne przechowujące wczytane kody
         self.loaded_code1 = None
         self.loaded_code2 = None
-
 
         # --- Nawigacja ---
         nav_layout = QHBoxLayout()
@@ -344,14 +338,17 @@ class IrisMainWindow(QMainWindow):
         self.viewer.wyswietl_obraz_numpy(processed_img)
         
         tytuly_krokow = [
-            "Krok 0: Oryginał", "Krok 1: Skala szarości", "Krok 2: Detekcja źrenicy",
+            "Krok 0: Oryginał", 
+            "Krok 1: Skala szarości", 
+            "Krok 2: Detekcja źrenicy",
             "Krok 3: Morfologia źrenicy", 
             "Krok 4: Środek i promień źrenicy", 
             "Krok 5: Detekcja tęczówki",
             "Krok 6: Morfologia tęczówki",
             "Krok 7: Wyznaczenie promienia tęczówki", 
-            "Krok 8: Rozwinięcie tęczówki"
-            "Krok 9: Kodowanie Daugmana (Gabor)"
+            "Krok 8: Rozwinięcie tęczówki",
+            "Krok 9: Kodowanie Daugmana (Gabor)",
+            "Krok 10: Porównanie kodów"
         ]
         self.lbl_step.setText(tytuly_krokow[self.current_step] if self.current_step < len(tytuly_krokow) else f"Krok {self.current_step}")
         
@@ -421,7 +418,6 @@ class IrisMainWindow(QMainWindow):
             iris_bin = np.where(img_gray < thr_P, 0, 255).astype(np.uint8)
             iris_bin = IrisProcessor.apply_morphology(iris_bin, params['op3'], params['sz3'])
             iris_bin = IrisProcessor.apply_morphology(iris_bin, params['op4'], params['sz4'])
-            #r_iris = IrisProcessor.find_iris_radius(img_gray, cx, cy, r_pupil)
             r_iris = IrisProcessor.find_iris_radius(iris_bin, cx, cy, r_pupil)
             
             unwrapped = IrisProcessor.unwrap_iris(img, cx, cy, r_pupil, r_iris, width=128, height=64)
