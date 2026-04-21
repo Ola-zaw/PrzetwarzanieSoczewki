@@ -421,7 +421,8 @@ class IrisMainWindow(QMainWindow):
             iris_bin = np.where(img_gray < thr_P, 0, 255).astype(np.uint8)
             iris_bin = IrisProcessor.apply_morphology(iris_bin, params['op3'], params['sz3'])
             iris_bin = IrisProcessor.apply_morphology(iris_bin, params['op4'], params['sz4'])
-            r_iris = IrisProcessor.find_iris_radius(img_gray, cx, cy, r_pupil)
+            #r_iris = IrisProcessor.find_iris_radius(img_gray, cx, cy, r_pupil)
+            r_iris = IrisProcessor.find_iris_radius(iris_bin, cx, cy, r_pupil)
             
             unwrapped = IrisProcessor.unwrap_iris(img, cx, cy, r_pupil, r_iris, width=128, height=64)
             

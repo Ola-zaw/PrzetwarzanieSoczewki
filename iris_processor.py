@@ -291,15 +291,23 @@ class IrisProcessor:
         # Generujemy kąty z pominięciem góry i dołu:
         # 1. Prawa strona oka: od -45 stopni (-pi/4) do 45 stopni (pi/4)
         # 2. Lewa strona oka: od 135 stopni (3*pi/4) do 225 stopni (5*pi/4)
-        half_w = width // 2
-        theta_right = np.linspace(-np.pi / 4, np.pi / 4, half_w)
-        theta_left = np.linspace(3 * np.pi / 4, 5 * np.pi / 4, width - half_w)
+        # half_w = width // 2
+        # theta_right = np.linspace(-np.pi / 4, np.pi / 4, half_w)
+        # theta_left = np.linspace(3 * np.pi / 4, 5 * np.pi / 4, width - half_w)
         
-        thetas = np.concatenate([theta_right, theta_left])
+        # thetas = np.concatenate([theta_right, theta_left])
         
+        # rhos = np.linspace(0, 1, height)
+
+        # theta_grid, rho_grid = np.meshgrid(thetas, rhos)
+
+        # Zastąp linie tworzące theta_right i theta_left tym jednym poleceniem:
+        # Rozwijamy płynnie pełne 360 stopni (od 0 do 2*Pi)
+        thetas = np.linspace(0, 2 * np.pi, width)
         rhos = np.linspace(0, 1, height)
 
         theta_grid, rho_grid = np.meshgrid(thetas, rhos)
+        ##
 
         r_grid = r_pupil + rho_grid * (r_iris - r_pupil)
 
@@ -352,16 +360,35 @@ class IrisProcessor:
             else:
                 band_sampled = band
 
+            # signal_1d = np.dot(band_sampled.T, gauss_window)
+
+            # # Splot uśrednionego sygnału z filtrami Gabora
+            # res_real = np.convolve(signal_1d, gabor_real, mode='same')
+            # res_imag = np.convolve(signal_1d, gabor_imag, mode='same')
+
+            # # Q1 (Re>0, Im>0) -> "00"  => bit1=0, bit2=0
+            # # Q2 (Re<0, Im>0) -> "01"  => bit1=0, bit2=1
+            # # Q3 (Re<0, Im<0) -> "11"  => bit1=1, bit2=1
+            # # Q4 (Re>0, Im<0) -> "10"  => bit1=1, bit2=0
+            # bit1 = (res_imag < 0).astype(np.uint8)
+            # bit2 = (res_real < 0).astype(np.uint8)
+
             signal_1d = np.dot(band_sampled.T, gauss_window)
+            signal_1d = signal_1d - np.mean(signal_1d)
 
-            # Splot uśrednionego sygnału z filtrami Gabora
-            res_real = np.convolve(signal_1d, gabor_real, mode='same')
-            res_imag = np.convolve(signal_1d, gabor_imag, mode='same')
+            # --- NOWE: Cykliczny splot (Wrap) ---
+            pad_w = len(gabor_real) // 2
+            sig_padded = np.pad(signal_1d, pad_w, mode='wrap')
 
-            # Q1 (Re>0, Im>0) -> "00"  => bit1=0, bit2=0
-            # Q2 (Re<0, Im>0) -> "01"  => bit1=0, bit2=1
-            # Q3 (Re<0, Im<0) -> "11"  => bit1=1, bit2=1
-            # Q4 (Re>0, Im<0) -> "10"  => bit1=1, bit2=0
+            # Używamy mode='valid', aby pozbyć się dodanego paddingu
+            res_real = np.convolve(sig_padded, gabor_real, mode='valid')
+            res_imag = np.convolve(sig_padded, gabor_imag, mode='valid')
+
+            # Wyrównanie długości
+            res_real = res_real[:n_points]
+            res_imag = res_imag[:n_points]
+            # ------------------------------------
+
             bit1 = (res_imag < 0).astype(np.uint8)
             bit2 = (res_real < 0).astype(np.uint8)
 
